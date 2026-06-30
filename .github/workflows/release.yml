@@ -1,0 +1,101 @@
+name: Release Plugin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "plugin.yml"
+      - "plugin.js"
+      - "README.md"
+      - ".github/workflows/release.yml"
+      - ".github/trpack/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.check_tag.outputs.exists == 'false' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get Version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python - <<'PY'
+          import re
+          from pathlib import Path
+
+          text = Path("plugin.yml").read_text(encoding="utf-8")
+          match = re.search(r"^version:\s*([^\s#]+)", text, re.M)
+          if not match:
+              raise SystemExit("plugin.yml version not found")
+          print(match.group(1))
+          PY
+          )
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check Tag
+        id: check_tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  tag:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create Tag
+        shell: bash
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          git tag "v$VERSION" "$(git rev-parse HEAD)"
+          git push origin "refs/tags/v$VERSION"
+
+  build-and-release:
+    needs: [check-version, tag]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: v${{ needs.check-version.outputs.version }}
+
+      - name: Package .tr
+        shell: bash
+        env:
+          TRPACK_SIGNING_KEY: ${{ secrets.TRPACK_SIGNING_KEY }}
+        run: |
+          TRPACK=".github/trpack/linux-x86_64/trpack"
+          chmod +x "$TRPACK"
+          mkdir -p dist
+          if [[ -z "${TRPACK_SIGNING_KEY:-}" ]]; then
+            echo "::error::TRPACK_SIGNING_KEY secret is required for official plugin builds"
+            exit 1
+          fi
+          printf '%s' "$TRPACK_SIGNING_KEY" > .trpack-signing-key.json
+
+          OUT="dist/ting-reader-plugin-store-${{ needs.check-version.outputs.version }}.tr"
+          "$TRPACK" validate .
+          "$TRPACK" build . --output "$OUT" --sign-key .trpack-signing-key.json
+          "$TRPACK" verify "$OUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          files: dist/*.tr

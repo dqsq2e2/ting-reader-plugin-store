@@ -1,0 +1,30 @@
+id: ting-reader-plugin-store
+name: Ting Reader Plugin Store
+version: 1.0.0
+min_core_version: 1.4.8
+author: Ting Reader Team
+description:
+  zh: 提供可配置插件源的插件商店。
+  en: Provides a configurable plugin source for the plugin store.
+runtime: javascript
+license: MIT
+entry_point: plugin.js
+capabilities:
+- id: official.plugin_store
+  kind: plugin_store
+  invoke: listPlugins
+config_schema:
+  type: object
+  properties:
+    source_url:
+      type: string
+      title:
+        zh: 插件源地址
+        en: Plugin Source URL
+      description:
+        zh: 返回插件列表 JSON 的地址
+        en: URL that returns the plugin list JSON
+      default: https://www.tingreader.cn/api/plugins
+permissions:
+- type: network_access
+  value: "*"
