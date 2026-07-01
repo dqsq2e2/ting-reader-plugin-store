@@ -8,6 +8,7 @@ description:
   en: Provides a configurable plugin source for the plugin store.
 runtime: javascript
 license: MIT
+repo: dqsq2e2/ting-reader-plugin-store
 entry_point: plugin.js
 capabilities:
 - id: official.plugin_store
