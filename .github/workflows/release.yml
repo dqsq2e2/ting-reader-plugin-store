@@ -7,6 +7,7 @@ on:
     paths:
       - "plugin.yml"
       - "plugin.js"
+      - "sdk.mjs"
       - "README.md"
       - ".github/workflows/release.yml"
       - ".github/trpack/**"
@@ -52,28 +53,23 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-  tag:
+  build-and-release:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
-      - name: Create Tag
-        shell: bash
-        run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
-          git tag "v$VERSION" "$(git rev-parse HEAD)"
-          git push origin "refs/tags/v$VERSION"
-
-  build-and-release:
-    needs: [check-version, tag]
-    if: needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
         with:
-          ref: v${{ needs.check-version.outputs.version }}
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check JavaScript modules
+        run: |
+          node --check plugin.js
+          node --check sdk.mjs
 
       - name: Package .tr
         shell: bash
@@ -82,20 +78,28 @@ jobs:
         run: |
           TRPACK=".github/trpack/linux-x86_64/trpack"
           chmod +x "$TRPACK"
+          [[ "$("$TRPACK" --version)" == "trpack 2.0.1" ]]
           mkdir -p dist
           if [[ -z "${TRPACK_SIGNING_KEY:-}" ]]; then
             echo "::error::TRPACK_SIGNING_KEY secret is required for official plugin builds"
             exit 1
           fi
-          printf '%s' "$TRPACK_SIGNING_KEY" > .trpack-signing-key.json
+          KEY_FILE="$RUNNER_TEMP/trpack-signing-key.json"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          umask 077
+          printf '%s' "$TRPACK_SIGNING_KEY" > "$KEY_FILE"
 
           OUT="dist/ting-reader-plugin-store-${{ needs.check-version.outputs.version }}.tr"
           "$TRPACK" validate .
-          "$TRPACK" build . --output "$OUT" --sign-key .trpack-signing-key.json
+          "$TRPACK" build . --output "$OUT" --sign-key "$KEY_FILE"
           "$TRPACK" verify "$OUT"
+          (cd dist && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
-          files: dist/*.tr
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/*.tr
+            dist/*.tr.sha256

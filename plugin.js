@@ -1,3 +1,4 @@
+import { success } from "./sdk.mjs";
 const DEFAULT_SOURCE_URL = "https://www.tingreader.cn/api/plugins";
 
 async function listPlugins(params) {
@@ -48,4 +49,8 @@ function isLocalHttpSource(parsed) {
   if (host.startsWith("10.")) return true;
   const parts = host.split(".").map((part) => Number(part));
   return parts.length === 4 && parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+}
+
+export async function list_plugins(params) {
+  return success(await listPlugins(params));
 }

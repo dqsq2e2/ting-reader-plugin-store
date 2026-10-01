@@ -1,7 +1,7 @@
 id: ting-reader-plugin-store
 name: Ting Reader Plugin Store
-version: 1.0.0
-min_core_version: 1.4.8
+version: 2.0.0
+min_core_version: 2.0.0
 author: Ting Reader Team
 description:
   zh: 提供可配置插件源的插件商店。
@@ -13,7 +13,8 @@ entry_point: plugin.js
 capabilities:
 - id: official.plugin_store
   kind: plugin_store
-  invoke: listPlugins
+  operations:
+  - list_plugins
 config_schema:
   type: object
   properties:
@@ -28,4 +29,4 @@ config_schema:
       default: https://www.tingreader.cn/api/plugins
 permissions:
 - type: network_access
-  value: "*"
+  domain: '*'
