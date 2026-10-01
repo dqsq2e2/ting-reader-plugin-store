@@ -8,10 +8,16 @@ on:
       - "plugin.yml"
       - "plugin.js"
       - "sdk.mjs"
+      - "ui/**"
+      - "tests/**"
       - "README.md"
       - ".github/workflows/release.yml"
       - ".github/trpack/**"
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -37,7 +43,13 @@ jobs:
           match = re.search(r"^version:\s*([^\s#]+)", text, re.M)
           if not match:
               raise SystemExit("plugin.yml version not found")
-          print(match.group(1))
+          version = match.group(1).strip("\"'")
+          if Path("Cargo.toml").exists():
+              import tomllib
+              package_version = tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
+              if package_version != version:
+                  raise SystemExit("Cargo.toml and plugin.yml versions differ")
+          print(version)
           PY
           )
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -70,6 +82,9 @@ jobs:
         run: |
           node --check plugin.js
           node --check sdk.mjs
+          if [[ -d ui ]]; then
+            find ui -name '*.js' -exec node --check {} \;
+          fi
 
       - name: Package .tr
         shell: bash
