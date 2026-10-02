@@ -93,7 +93,7 @@ jobs:
         run: |
           TRPACK=".github/trpack/linux-x86_64/trpack"
           chmod +x "$TRPACK"
-          [[ "$("$TRPACK" --version)" == "trpack 2.0.1" ]]
+          [[ "$("$TRPACK" --version)" == "trpack 2.0.2" ]]
           mkdir -p dist
           if [[ -z "${TRPACK_SIGNING_KEY:-}" ]]; then
             echo "::error::TRPACK_SIGNING_KEY secret is required for official plugin builds"
