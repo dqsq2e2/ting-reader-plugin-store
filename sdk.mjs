@@ -1,6 +1,6 @@
-// Ting Reader plugin SDK 2.0.0. Package this file with each JS extension.
+// Ting Reader plugin SDK. Package this file with each JS extension.
 // Host identity and resource grants are bound by the runtime, never by JSON.
-export const SDK_VERSION = "2.0.2";
+export const SDK_VERSION = "2.0.4";
 export const MAX_CHUNK_BYTES = 256 * 1024;
 
 export async function host(method, input = {}) {
@@ -168,9 +168,68 @@ export function publishSearch(parsed, request) {
 }
 
 export function success(data) { return { ok: true, data }; }
-export function failure(code, message, context) {
+const pluginErrorCodes = new Set([
+  "invalid_manifest", "invalid_input", "invalid_output", "unsupported_operation",
+  "permission_denied", "not_found", "conflict", "network_error", "parse_error",
+  "timeout", "cancelled", "resource_limit", "dependency_error", "abi_mismatch",
+  "plugin_unavailable", "internal_error",
+]);
+
+function utf8Length(text) {
+  let bytes = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0);
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+// Partial operation results use the same classification as thrown Host errors.
+export function errorInfo(error, fallbackCode = "internal_error") {
+  if (!pluginErrorCodes.has(fallbackCode)) throw new TypeError("Unknown plugin error code");
+  const source = error?.pluginError ?? error;
+  const code = pluginErrorCodes.has(source?.code) ? source.code : fallbackCode;
+  const text = typeof source?.message === "string" && source.message
+    ? source.message : typeof source === "string" && source || "Plugin operation failed";
+  let message = "";
+  let bytes = 0;
+  for (const character of text) {
+    bytes += utf8Length(character);
+    if (bytes > 512) break;
+    message += character;
+  }
+  let details = null;
+  try {
+    const encoded = JSON.stringify(source?.details ?? null);
+    if (typeof encoded === "string" && utf8Length(encoded) <= 4096) {
+      details = JSON.parse(encoded);
+    }
+  } catch (_) {
+    // Diagnostics must not replace the original failure with a serialization error.
+  }
+  return { code, message, details, retryable: source?.retryable === true };
+}
+
+export function failure(code, message, context, options = {}) {
+  if (!pluginErrorCodes.has(code)) throw new TypeError("Unknown plugin error code");
+  if (typeof message !== "string" || !message || utf8Length(message) > 512) {
+    throw new TypeError("Plugin error message must contain 1..=512 UTF-8 bytes");
+  }
+  for (const field of ["plugin_id", "capability_id", "operation", "request_id"]) {
+    const value = context?.[field];
+    if (typeof value !== "string" || !value || utf8Length(value) > 128) {
+      throw new TypeError("Invalid plugin error identity");
+    }
+  }
+  const serializedDetails = JSON.stringify(options.details ?? null);
+  if (typeof serializedDetails !== "string" || utf8Length(serializedDetails) > 4096) {
+    throw new TypeError("Plugin error details exceed the control-message limit");
+  }
+  if (options.retryable !== undefined && typeof options.retryable !== "boolean") {
+    throw new TypeError("Plugin error retryable must be a boolean");
+  }
   return { ok: false, error: {
-    code, message, details: null, retryable: false,
+    code, message, details: JSON.parse(serializedDetails), retryable: options.retryable ?? false,
     plugin_id: context.plugin_id, capability_id: context.capability_id,
     operation: context.operation, request_id: context.request_id,
   } };
