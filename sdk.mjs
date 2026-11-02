@@ -1,6 +1,6 @@
 // Ting Reader plugin SDK. Package this file with each JS extension.
 // Host identity and resource grants are bound by the runtime, never by JSON.
-export const SDK_VERSION = "2.0.4";
+export const SDK_VERSION = "2.0.5";
 export const MAX_CHUNK_BYTES = 256 * 1024;
 
 export async function host(method, input = {}) {
